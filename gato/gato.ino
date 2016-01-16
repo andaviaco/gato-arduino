@@ -1,76 +1,5 @@
-// ------------------ fisical board -----------------
-#define ROWS 3
-#define COLUMNS 6
-
-// pins assigned to columns
-int columns[COLUMNS] = {8, 9, 10, 11, 12, 13};
-
-// pins assigned to rows
-int rows[ROWS] = {5, 6, 7};
-
-boolean board[ROWS][COLUMNS] = {
-  {0,0,0,0,0,0},
-  {0,0,0,0,0,0},
-  {0,0,0,0,0,0}  
-};
-  
-void clearBoard() {
-  int i, j;
-
-  for (i = 0; i < ROWS; i++) {
-    for(j = 0; j < COLUMNS; j++) {
-      board[i][j] = false;
-    }
-  }
-}
-    
-void setupBoard() {
-  int i;
-  
-  // set pins as outputs
-  for (i=0; i < ROWS; i++) {
-    pinMode(rows[i], OUTPUT);
-    digitalWrite(rows[i], HIGH);
-  }
-
-  for (i=0; i < COLUMNS; i++) {
-    pinMode(columns[i], OUTPUT);
-    digitalWrite(columns[i], LOW);
-  }
-}
-    
-void setLed(int row, int col, boolean on) {
-  board[row][col] = on;
-}
-    
-boolean getLedState(int row, int col) {
-  return board[row][col];
-}
-  
-void displayBoard() {
-  static byte cur_row = 0; // current active row
-
-  digitalWrite(rows[cur_row], HIGH); // Turn off previous row
-  
-  // display next row, wrap if necesary
-  if (++cur_row == ROWS) {
-    cur_row = 0;
-  }
-  
-  // enable/disable corresponding columns
-  for(int i = 0; i < COLUMNS; i++) {
-     if (board[cur_row][i]) {
-       digitalWrite(columns[i], HIGH);
-     } else {
-       digitalWrite(columns[i], LOW);
-     }
-   }
-    
-   digitalWrite(rows[cur_row], LOW); // enable current row
-   delay(5);
-}
-// ----------------------------------------
-#define TEST
+#include <TimerOne.h>
+#include "board.h"
 
 #define BOARD_SIZE 3
 
@@ -81,12 +10,12 @@ void displayBoard() {
 
 #define PLAYER_A 'R'
 #define PLAYER_B 'G'
+#define EMPTY -1
 
 #define SEP ',' // coodinates separator
 
 typedef char TicTacBoard[BOARD_SIZE][BOARD_SIZE];
 
-// game logic functions
 boolean checkCoordinates(int row, int col);
 void clearVirtualBoard();
 void setTurn(char turn);
@@ -94,35 +23,55 @@ boolean isCellAvailable(int row, int col);
 void checkForWinner();
 
 // game variables
+char winner;
 char turn;
 int turn_count;
 int max_turns;
+
 TicTacBoard virtual_board;
-boolean play = true;
+
+boolean play;
+
+int line[BOARD_SIZE][2]; // winer line coordinates
 
 // turn indicator leds
-int player_a_led = 3;
-int player_b_led = 2;
+int turn_leds[2] = {2, 3};
 
 void setup() {
   setupBoard();
   clearVirtualBoard();
   
-  pinMode(player_a_led, OUTPUT);
-  pinMode(player_b_led, OUTPUT);
+  Timer1.initialize(1000);
+  Timer1.attachInterrupt(displayBoard);
+  
+  pinMode(turn_leds[0], OUTPUT);
+  pinMode(turn_leds[1], OUTPUT);
 
   Serial.begin(9600);
   
+  winner = EMPTY;
   setTurn(PLAYER_A);
   turn_count = 0;
   max_turns = BOARD_SIZE * BOARD_SIZE;
+  play = true;
 }
 
 void loop() {
+  static boolean state = true; 
   String msg; 
   int row, col, pos;
   
-  displayBoard();
+  if (winner != EMPTY) {  
+    int led = (winner == PLAYER_A) ? LED_A : LED_B;
+    
+    for (int i=0; i < BOARD_SIZE; i++) {
+      setLed(line[i][0], cast_column(line[i][1], led), state);
+    }
+    
+    state = !state;
+    
+    delay(500);
+  }
   
   if (Serial.available()) {
     Serial.println("Receiving data...");
@@ -132,6 +81,8 @@ void loop() {
     if (msg.equals("reset")) {
       clearBoard();
       clearVirtualBoard();
+      
+      winner = EMPTY;
       turn_count = 0;
       play = true;
       Serial.println("Game reset!");
@@ -189,10 +140,9 @@ void loop() {
 void clearVirtualBoard() {
   int i, j;
   
-  // initialze virtual board
   for (i = 0; i < BOARD_SIZE; i++) {
     for(j = 0; j < BOARD_SIZE; j++) {
-      virtual_board[i][j] = -1;
+      virtual_board[i][j] = EMPTY;
     }
   }
 }
@@ -202,84 +152,120 @@ boolean checkCoordinates(int row, int col) {
 }
 
 boolean isCellAvailable(int row, int col) {
-  return !getLedState(row, cast_column(col, LED_A)) &&
-         !getLedState(row, cast_column(col, LED_B));
+  return virtual_board[row][col] == EMPTY;
 }
 
 void checkForWinner() {
   // check columns
-  boolean finish;
-  int i, j;
-  
-  finish = false;
-  
+  boolean end_game;
+  int row, col;
   char cell;
   
-  // check rows
-  for (i = 0; i < BOARD_SIZE && !finish; i++) {
-    cell = virtual_board[i][0];
+  end_game = false;
     
-    if (cell != -1) {
-      for (j = 1; j < BOARD_SIZE; j++) {
-        if (cell != virtual_board[i][j]) break;
+  // check rows
+  for (row = 0; row < BOARD_SIZE && !end_game; row++) {
+    cell = virtual_board[row][0];
+       
+    if (cell != EMPTY) {
+      line[0][0] = row;
+      line[0][1] = 0;
+
+      for (col = 1; col < BOARD_SIZE; col++) {
+        if (cell != virtual_board[row][col]) break;
+        
+        line[col][0] = row;
+        line[col][1] = col;
       }
       
-      finish = (j == BOARD_SIZE); 
+      end_game = (col == BOARD_SIZE); 
     }
   }
   
   // check columns
-  for (i = 0; i < BOARD_SIZE && !finish; i++) {
-    cell = virtual_board[0][i];
+  for (col = 0; col < BOARD_SIZE && !end_game; col++) {
+    cell = virtual_board[0][col];
     
-    if (cell != -1) {
-      for (j = 1; j < BOARD_SIZE; j++) {
-        if (cell != virtual_board[j][i]) break;
+    if (cell != EMPTY) {
+      line[0][0] = 0;
+      line[0][1] = col;
+      
+      for (row = 1; row < BOARD_SIZE; row++) {
+        if (cell != virtual_board[row][col]) break;
+        
+        line[row][0] = row;
+        line[row][1] = col;
       }
       
-      finish = (j == BOARD_SIZE); 
+      end_game = (row == BOARD_SIZE); 
     }
   }
   
   // check diagonals
-  if (!finish && virtual_board[0][0] != -1) {
-    cell = virtual_board[0][0];
-    for (i = 1; i < BOARD_SIZE && !finish; i++) {
-      if (cell != virtual_board[i][i]) break;
+  if (!end_game && (cell = virtual_board[0][0]) != EMPTY) {   
+    line[0][0] = 0;
+    line[0][1] = 0;
+    
+    for (row = 1; row < BOARD_SIZE; row++) {
+      col = row;
+
+      if (cell != virtual_board[row][col]) break;
+      
+      line[row][0] = row;
+      line[row][1] = col;
     }
   
-    finish = (i == BOARD_SIZE);
+    end_game = (row == BOARD_SIZE);
   }
   
-  if (!finish && virtual_board[BOARD_SIZE-1][0] != -1) {
-    cell = virtual_board[BOARD_SIZE-1][0];
-    for (i = 1; i < BOARD_SIZE; i++) {
-      if (cell != virtual_board[BOARD_SIZE - (1 + i)][i]) break;
+  row = BOARD_SIZE-1;
+  if (!end_game && (cell = virtual_board[row][0]) != EMPTY) {
+    line[0][0] = row;
+    line[0][1] = 0;
+ 
+    for (col = 1; col < BOARD_SIZE; col++) {
+      row = BOARD_SIZE - (1 + col);
+      
+      if (cell != virtual_board[row][col]) break;
+      
+      line[col][0] = row;
+      line[col][1] = col;
     }
     
-    finish = (i == BOARD_SIZE);
+    end_game = (col == BOARD_SIZE);
   }
   
-  if (finish) {
+  if (end_game) {
+    winner = cell;
     Serial.print("Winner: ");
-    Serial.println(cell);
+    Serial.println(winner);
     play = false;
   } else if (turn_count == max_turns) {
     Serial.println("Draw");
     play = false;
   }
-  
-  return;
 }
 
 void setTurn(char new_turn) {
   if (new_turn == PLAYER_A) {
-    digitalWrite(player_a_led, HIGH);
-    digitalWrite(player_b_led, LOW);
+    digitalWrite(turn_leds[0], HIGH);
+    digitalWrite(turn_leds[1], LOW);
   } else {
-    digitalWrite(player_a_led, LOW);
-    digitalWrite(player_b_led, HIGH);
+    digitalWrite(turn_leds[1], HIGH);
+    digitalWrite(turn_leds[0], LOW);
   }
   
   turn = new_turn;
+}
+
+void blinkWinnerLine() {
+  static boolean state = true;
+  
+  int led = (winner == PLAYER_A) ? LED_A : LED_B;
+  
+  for (int i=0; i < BOARD_SIZE; i++) {
+    setLed(line[i][0], cast_column(line[i][1], led), state);
+  }
+  
+  state = !state;
 }
