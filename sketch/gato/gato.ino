@@ -8,8 +8,8 @@
 #define LED_B 1
 #define cast_column(col,led) col*2+led  // cast virtual board column to fisical board column
 
-#define PLAYER_A 'R'
-#define PLAYER_B 'G'
+#define PLAYER_A 'O'
+#define PLAYER_B 'X'
 #define EMPTY -1
 
 #define SEP ',' // coodinates separator
@@ -61,9 +61,11 @@ void loop() {
   String msg; 
   int row, col, pos;
   
+   // If there's a winner, then turn off/on winner line
   if (winner != EMPTY) {  
-    int led = (winner == PLAYER_A) ? LED_A : LED_B;
+    int led = (winner == PLAYER_A) ? LED_A : LED_B; // Get winner led color
     
+    // Display winner line
     for (int i=0; i < BOARD_SIZE; i++) {
       setLed(line[i][0], cast_column(line[i][1], led), state);
     }
@@ -74,38 +76,23 @@ void loop() {
   }
   
   if (Serial.available()) {
-    Serial.println("Receiving data...");
+    char bytes[3];
     
-    msg = Serial.readString();
+    Serial.readBytes(bytes, 3);
     
-    if (msg.equals("reset")) {
+    if (bytes[0] == 0) {
+      // Handle reset command
       clearBoard();
       clearVirtualBoard();
       
       winner = EMPTY;
       turn_count = 0;
       play = true;
-      Serial.println("Game reset!");
-    } else if (play) {
+    } else if (bytes[0] == 1) {
+      int row = bytes[1];
+      int col = bytes[2];
       
-      pos = msg.indexOf(SEP);
-    
-      if (pos != -1) {
-        row = msg.substring(0, pos).toInt();
-        col = msg.substring(pos + 1).toInt();
-      } else {
-        Serial.println("Invalid input!");
-        return;
-      }
-      
-      Serial.print("Row: ");
-      Serial.println(row);
-      
-      Serial.print("Col: ");
-      Serial.println(col);
-      Serial.println();
-      
-      if (checkCoordinates(row, col)) {
+      if (play && checkCoordinates(row, col)) {
         if (isCellAvailable(row, col)) {
           if (turn == PLAYER_A) {
             setLed(row, cast_column(col, LED_A), true);
@@ -126,14 +113,20 @@ void loop() {
           }
           
         } else {
-          Serial.println("Cell is already in use!");        
+          // Serial.println("Cell is already in use!");        
         }
       } else {
-        Serial.println("Wrong coordinates!");
+        // Serial.println("Wrong coordinates!");
       }
     } else {    
-      Serial.println("Write reset to reset the game");
+      // Serial.println("Write reset to reset the game");
     }
+    
+    bytes[0] = (winner != EMPTY) ? 1 : ((play == false) ? 2 : 0);
+    bytes[1] = winner;
+    bytes[2] = turn;
+    
+    Serial.write(bytes, 3);
   }
 }
 
@@ -237,11 +230,11 @@ void checkForWinner() {
   
   if (end_game) {
     winner = cell;
-    Serial.print("Winner: ");
-    Serial.println(winner);
+    // Serial.print("Winner: ");
+    // Serial.println(winner);
     play = false;
   } else if (turn_count == max_turns) {
-    Serial.println("Draw");
+    // Serial.println("Draw");
     play = false;
   }
 }
