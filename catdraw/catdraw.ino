@@ -1,8 +1,8 @@
 #include <TimerOne.h>
 #include "board.h"
 
-#define LED_A 0
-#define LED_B 1
+#define RESET 0
+#define DRAW 1
 #define cast_column(col,led) col*2+led
 
 void setup() {
@@ -11,11 +11,20 @@ void setup() {
   Timer1.initialize(1000);
   Timer1.attachInterrupt(displayBoard);
 
-  setLed(1, 2, 1);
-  setLed(1, 3, 1);
+  Serial.begin(9600);
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  if (Serial.available()) {
+    char bytes[4];
 
+    Serial.readBytes(bytes, 4);
+
+    if (bytes[0] == RESET) {
+      clearBoard();
+    } else {
+      setLed(bytes[1], bytes[2], bytes[3]);
+    }
+  }
 }
+

@@ -9,12 +9,12 @@ int rows[ROWS] = {5, 6, 7};
 Board board = {
   {0,0,0,0,0,0},
   {0,0,0,0,0,0},
-  {0,0,0,0,0,0}  
+  {0,0,0,0,0,0}
 };
 
 void setupBoard() {
   int i;
-  
+
   // set pins as outputs
   for (i=0; i < ROWS; i++) {
     pinMode(rows[i], OUTPUT);
@@ -26,21 +26,21 @@ void setupBoard() {
     digitalWrite(columns[i], LOW);
   }
 }
-    
+
 void setLed(int row, int col, boolean on) {
   board[row][col] = on;
 }
-  
+
 void displayBoard() {
   static byte cur_row = 0; // current active row
 
   digitalWrite(rows[cur_row], HIGH); // Turn off previous row
-  
+
   // display next row, wrap if necesary
   if (++cur_row == ROWS) {
     cur_row = 0;
   }
-  
+
   // enable/disable corresponding columns
   for(int i = 0; i < COLUMNS; i++) {
      if (board[cur_row][i]) {
@@ -49,7 +49,7 @@ void displayBoard() {
        digitalWrite(columns[i], LOW);
      }
    }
-    
+
    digitalWrite(rows[cur_row], LOW); // enable current row
 }
 
